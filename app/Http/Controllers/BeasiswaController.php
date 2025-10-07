@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Validator;
  * Controller Beasiswa
  * 
  * Mengelola pendaftaran beasiswa mahasiswa
+ * IPK akan berubah setiap kali refresh halaman
  * 
  * @author Your Name
  * @version 1.0
@@ -19,21 +20,41 @@ use Illuminate\Support\Facades\Validator;
 class BeasiswaController extends Controller
 {
     /**
-     * Konstanta IPK mahasiswa
-     * Simulasi IPK yang didapat dari sistem
+     * Generate IPK random setiap kali dipanggil
+     * IPK akan berubah setiap refresh halaman
      */
-    const IPK_MAHASISWA = 3.4; // Ubah nilai ini untuk testing (misal: 2.9 atau 3.4)
+    private function getIpkMahasiswa(): float
+    {
+        // Generate IPK random antara 2.50 - 4.00
+        // Setiap kali method ini dipanggil, akan generate IPK baru
+        $ipk = round(mt_rand(250, 400) / 100, 2);
+        
+        return $ipk;
+    }
+
+    /**
+     * Mendapatkan standar IPK untuk setiap jenis beasiswa
+     */
+    private function getStandarIpk(): array
+    {
+        return [
+            'Akademik' => 3.5,
+            'Non-Akademik' => 3.0,
+            'Prestasi Olahraga' => 3.2,
+            'Prestasi Seni' => 3.2,
+        ];
+    }
 
     /**
      * Menampilkan halaman utama/home
      */
     public function index()
     {
-          $ipk = self::IPK_MAHASISWA;
-    $isEligible = Beasiswa::isEligible($ipk);
-    $standarIpk = 3.0; // IPK minimal untuk beasiswa
-    
-    return view('beasiswa.home', compact('ipk', 'isEligible', 'standarIpk'));
+        $ipk = $this->getIpkMahasiswa();
+        $isEligible = Beasiswa::isEligible($ipk);
+        $standarIpk = $this->getStandarIpk();
+        
+        return view('beasiswa.home', compact('ipk', 'isEligible', 'standarIpk'));
     }
 
     /**
@@ -41,30 +62,41 @@ class BeasiswaController extends Controller
      */
     public function pilihan()
     {
+        $ipk = $this->getIpkMahasiswa();
+        $standarIpk = $this->getStandarIpk();
+        
         $jenisBeasiswa = [
             [
                 'nama' => 'Beasiswa Akademik',
-                'syarat' => 'IPK minimal 3.0',
-                'deskripsi' => 'Beasiswa untuk mahasiswa berprestasi akademik'
+                'syarat' => 'IPK minimal 3.5',
+                'deskripsi' => 'Beasiswa untuk mahasiswa berprestasi akademik',
+                'ipk_minimum' => $standarIpk['Akademik'],
+                'eligible' => $ipk >= $standarIpk['Akademik']
             ],
             [
                 'nama' => 'Beasiswa Non-Akademik',
                 'syarat' => 'IPK minimal 3.0',
-                'deskripsi' => 'Beasiswa untuk mahasiswa aktif organisasi'
+                'deskripsi' => 'Beasiswa untuk mahasiswa aktif organisasi',
+                'ipk_minimum' => $standarIpk['Non-Akademik'],
+                'eligible' => $ipk >= $standarIpk['Non-Akademik']
             ],
             [
                 'nama' => 'Beasiswa Prestasi Olahraga',
-                'syarat' => 'IPK minimal 3.0 + Prestasi Olahraga',
-                'deskripsi' => 'Beasiswa untuk mahasiswa berprestasi di bidang olahraga'
+                'syarat' => 'IPK minimal 3.2 + Prestasi Olahraga',
+                'deskripsi' => 'Beasiswa untuk mahasiswa berprestasi di bidang olahraga',
+                'ipk_minimum' => $standarIpk['Prestasi Olahraga'],
+                'eligible' => $ipk >= $standarIpk['Prestasi Olahraga']
             ],
             [
                 'nama' => 'Beasiswa Prestasi Seni',
-                'syarat' => 'IPK minimal 3.0 + Prestasi Seni',
-                'deskripsi' => 'Beasiswa untuk mahasiswa berprestasi di bidang seni'
+                'syarat' => 'IPK minimal 3.2 + Prestasi Seni',
+                'deskripsi' => 'Beasiswa untuk mahasiswa berprestasi di bidang seni',
+                'ipk_minimum' => $standarIpk['Prestasi Seni'],
+                'eligible' => $ipk >= $standarIpk['Prestasi Seni']
             ]
         ];
 
-        return view('beasiswa.pilihan', compact('jenisBeasiswa'));
+        return view('beasiswa.pilihan', compact('jenisBeasiswa', 'ipk'));
     }
 
     /**
@@ -72,10 +104,19 @@ class BeasiswaController extends Controller
      */
     public function daftar()
     {
-        $ipk = self::IPK_MAHASISWA;
-        $isEligible = Beasiswa::isEligible($ipk);
+        $ipk = $this->getIpkMahasiswa();
+        $standarIpk = $this->getStandarIpk();
+        
+        // Cek apakah eligible untuk setidaknya satu beasiswa
+        $isEligible = false;
+        foreach ($standarIpk as $minIpk) {
+            if ($ipk >= $minIpk) {
+                $isEligible = true;
+                break;
+            }
+        }
 
-        return view('beasiswa.daftar', compact('ipk', 'isEligible'));
+        return view('beasiswa.daftar', compact('ipk', 'isEligible', 'standarIpk'));
     }
 
     /**
@@ -91,6 +132,7 @@ class BeasiswaController extends Controller
             'semester' => 'required|integer|min:1|max:8',
             'pilihan_beasiswa' => 'required|in:Akademik,Non-Akademik,Prestasi Olahraga,Prestasi Seni',
             'berkas' => 'required|file|mimes:pdf,jpg,jpeg,png,zip|max:2048',
+            'ipk_submit' => 'required|numeric', // Hidden field untuk simpan IPK saat submit
         ], [
             'nama.required' => 'Nama wajib diisi',
             'email.required' => 'Email wajib diisi',
@@ -114,11 +156,15 @@ class BeasiswaController extends Controller
                 ->withInput();
         }
 
-        // Cek IPK
-        $ipk = self::IPK_MAHASISWA;
-        if (!Beasiswa::isEligible($ipk)) {
+        // Gunakan IPK dari form (yang di-submit user)
+        $ipk = floatval($request->ipk_submit);
+        $standarIpk = $this->getStandarIpk();
+        $pilihanBeasiswa = $request->pilihan_beasiswa;
+        $minIpkRequired = $standarIpk[$pilihanBeasiswa] ?? 3.0;
+
+        if ($ipk < $minIpkRequired) {
             return redirect()->back()
-                ->with('error', 'IPK Anda tidak memenuhi syarat (minimal 3.0)')
+                ->with('error', "IPK Anda ({$ipk}) tidak memenuhi syarat untuk {$pilihanBeasiswa} (minimal {$minIpkRequired})")
                 ->withInput();
         }
 
@@ -152,8 +198,9 @@ class BeasiswaController extends Controller
     public function hasil()
     {
         $daftarBeasiswa = Beasiswa::orderBy('created_at', 'desc')->get();
+        $standarIpk = $this->getStandarIpk();
         
-        return view('beasiswa.hasil', compact('daftarBeasiswa'));
+        return view('beasiswa.hasil', compact('daftarBeasiswa', 'standarIpk'));
     }
 
     /**
@@ -178,10 +225,10 @@ class BeasiswaController extends Controller
 
     /**
      * Fungsi helper untuk mendapatkan IPK
-     * Bisa dipanggil dari view atau controller lain
+     * Akan generate IPK baru setiap kali dipanggil
      */
-    public static function getIpk()
+    public function getIpk()
     {
-        return self::IPK_MAHASISWA;
+        return $this->getIpkMahasiswa();
     }
 }
