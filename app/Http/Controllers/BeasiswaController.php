@@ -29,7 +29,11 @@ class BeasiswaController extends Controller
      */
     public function index()
     {
-        return view('beasiswa.home');
+          $ipk = self::IPK_MAHASISWA;
+    $isEligible = Beasiswa::isEligible($ipk);
+    $standarIpk = 3.0; // IPK minimal untuk beasiswa
+    
+    return view('beasiswa.home', compact('ipk', 'isEligible', 'standarIpk'));
     }
 
     /**

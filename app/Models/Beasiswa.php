@@ -58,7 +58,8 @@ class Beasiswa extends Model
      */
     public function getFormattedIpkAttribute(): string
     {
-        return number_format($this->ipk, 2, ',', '.');
+            return number_format((float) $this->ipk, 2, ',', '.');
+
     }
 
     /**

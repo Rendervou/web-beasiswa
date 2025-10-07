@@ -5,9 +5,10 @@ use App\Http\Controllers\BeasiswaController;
 
 /**
  * Routes untuk Sistem Pendaftaran Beasiswa
+ * dengan IPK Dinamis
  * 
  * @author Your Name
- * @version 1.0
+ * @version 2.0
  */
 
 // Halaman Utama
@@ -25,3 +26,6 @@ Route::get('/hasil-pendaftaran', [BeasiswaController::class, 'hasil'])->name('be
 
 // Download Berkas
 Route::get('/download-berkas/{id}', [BeasiswaController::class, 'downloadBerkas'])->name('beasiswa.download');
+
+// Refresh IPK (untuk testing - opsional, bisa dihapus jika tidak digunakan)
+// Route::get('/refresh-ipk', [BeasiswaController::class, 'refreshIpk'])->name('beasiswa.refresh.ipk');
